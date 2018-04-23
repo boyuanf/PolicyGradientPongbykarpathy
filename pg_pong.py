@@ -21,8 +21,8 @@ else:
     model['W1'] = np.random.randn(H, D) / np.sqrt(D)  # "Xavier" initialization
     model['W2'] = np.random.randn(H) / np.sqrt(H)
 
-grad_buffer = {k: np.zeros_like(v) for k, v in model.iteritems()}  # update buffers that add up gradients over a batch
-rmsprop_cache = {k: np.zeros_like(v) for k, v in model.iteritems()}  # rmsprop memory
+grad_buffer = {k: np.zeros_like(v) for k, v in model.items()}  # update buffers that add up gradients over a batch
+rmsprop_cache = {k: np.zeros_like(v) for k, v in model.items()}  # rmsprop memory
 
 
 def sigmoid(x):
@@ -43,7 +43,7 @@ def discount_rewards(r):
     """ take 1D float array of rewards and compute discounted reward """
     discounted_r = np.zeros_like(r)
     running_add = 0
-    for t in reversed(xrange(0, r.size)):
+    for t in reversed(range(0, r.size)):
         if r[t] != 0: running_add = 0  # reset the sum, since this was a game boundary (pong specific!)
         running_add = running_add * gamma + r[t]
         discounted_r[t] = running_add
@@ -84,12 +84,13 @@ while True:
 
     # forward the policy network and sample an action from the returned probability
     aprob, h = policy_forward(x)
-    action = 2 if np.random.uniform() < aprob else 3  # roll the dice!
+    action = 2 if np.random.uniform() < aprob else 3  # roll the dice! Draw samples from a uniform distribution.
 
     # record various intermediates (needed later for backprop)
     xs.append(x)  # observation
     hs.append(h)  # hidden state
     y = 1 if action == 2 else 0  # a "fake label"
+    # dZ
     dlogps.append(
         y - aprob)  # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
 
@@ -121,7 +122,7 @@ while True:
 
         # perform rmsprop parameter update every batch_size episodes
         if episode_number % batch_size == 0:
-            for k, v in model.iteritems():
+            for k, v in model.items():
                 g = grad_buffer[k]  # gradient
                 rmsprop_cache[k] = decay_rate * rmsprop_cache[k] + (1 - decay_rate) * g ** 2
                 model[k] += learning_rate * g / (np.sqrt(rmsprop_cache[k]) + 1e-5)
@@ -129,12 +130,11 @@ while True:
 
         # boring book-keeping
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
-        print
-        'resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward)
+        print('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
         if episode_number % 100 == 0: pickle.dump(model, open('save.p', 'wb'))
         reward_sum = 0
         observation = env.reset()  # reset env
         prev_x = None
 
     if reward != 0:  # Pong has either +1 or -1 reward exactly when game ends.
-        print('ep %d: game finished, reward: %f' % (episode_number, reward)) + ('' if reward == -1 else ' !!!!!!!!')
+        print(('ep %d: game finished, reward: %f' % (episode_number, reward)) + ('' if reward == -1 else ' !!!!!!!!'))

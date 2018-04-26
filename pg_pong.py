@@ -18,7 +18,8 @@ if resume:
     model = pickle.load(open('save.p', 'rb'))
 else:
     model = {}
-    model['W1'] = np.random.randn(H, D) / np.sqrt(D)  # "Xavier" initialization
+    # np.random.randn: Return a sample (or samples) from the “standard normal” distribution.
+    model['W1'] = np.random.randn(H, D) / np.sqrt(D)  # "Xavier" initialization: setting the variance of W[l] to sqrt(1/n[l-1]) and mean to 0
     model['W2'] = np.random.randn(H) / np.sqrt(H)
 
 grad_buffer = {k: np.zeros_like(v) for k, v in model.items()}  # update buffers that add up gradients over a batch
@@ -41,6 +42,7 @@ def prepro(I):
 
 def discount_rewards(r):
     """ take 1D float array of rewards and compute discounted reward """
+    """ Explained in 'More general advantage functions' section """
     discounted_r = np.zeros_like(r)
     running_add = 0
     for t in reversed(range(0, r.size)):
@@ -55,15 +57,28 @@ def policy_forward(x):
     h[h < 0] = 0  # ReLU nonlinearity
     logp = np.dot(model['W2'], h)
     p = sigmoid(logp)
+    '''   # debug
+    print("x shape: ", x.shape)  # x shape:  (6400,)
+    print("h shape: ", h.shape)  # h shape:  (200,)
+    print("logp shape: ", logp.shape) # logp shape:  ()
+    '''
     return p, h  # return probability of taking action 2, and hidden state
 
 
-def policy_backward(eph, epdlogp):
+def policy_backward(eph, epdlogp):  # parameter (A1, dZ2)
     """ backward pass. (eph is array of intermediate hidden states) """
-    dW2 = np.dot(eph.T, epdlogp).ravel()
-    dh = np.outer(epdlogp, model['W2'])
+    dW2 = np.dot(eph.T, epdlogp).ravel() # dW2 = A1.T multi dZ2
+    '''
+    print("eph shape: ", eph.shape)  # eph shape:  (1227, 200)
+    print("epdlogp shape: ", epdlogp.shape)  # epdlogp shape:  (1227, 1)
+    print("dW2 shape: ", dW2.shape)  # dW2 shape:  (200,)
+    '''
+    # dZ1 = dZ2 multi (W2).T  = np.outer(dZ2, W2), because dZ2 and W2 are both 1 dim vector,
+    # in this case matmul equals to outer
+    dh = np.outer(epdlogp, model['W2'])   # shape: (1227, 200)
+    # dZ1 = dZ1 times g1'(Z1), here we only have A1, but A1 = max(0, Z1), so in the following we check if A1<=0
     dh[eph <= 0] = 0  # backpro prelu
-    dW1 = np.dot(dh.T, epx)
+    dW1 = np.dot(dh.T, epx)  # dW1 = dZ1.T multi X, dim is (200, 1227) multi (1227, 6400) = (200, 6400)
     return {'W1': dW1, 'W2': dW2}
 
 
@@ -75,7 +90,8 @@ running_reward = None
 reward_sum = 0
 episode_number = 0
 while True:
-    if render: env.render()
+    if render:
+        env.render()
 
     # preprocess the observation, set input to network to be difference image
     cur_x = prepro(observation)
@@ -84,7 +100,7 @@ while True:
 
     # forward the policy network and sample an action from the returned probability
     aprob, h = policy_forward(x)
-    action = 2 if np.random.uniform() < aprob else 3  # roll the dice! Draw samples from a uniform distribution.
+    action = 2 if np.random.uniform() < aprob else 3  # roll the dice! np.random.uniform(): Draw samples from a uniform distribution.
 
     # record various intermediates (needed later for backprop)
     xs.append(x)  # observation
@@ -118,7 +134,8 @@ while True:
 
         epdlogp *= discounted_epr  # modulate the gradient with advantage (PG magic happens right here.)
         grad = policy_backward(eph, epdlogp)
-        for k in model: grad_buffer[k] += grad[k]  # accumulate grad over batch
+        for k in model:
+            grad_buffer[k] += grad[k]  # accumulate grad over batch
 
         # perform rmsprop parameter update every batch_size episodes
         if episode_number % batch_size == 0:

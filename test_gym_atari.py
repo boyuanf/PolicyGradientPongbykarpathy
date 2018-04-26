@@ -1,6 +1,6 @@
 import gym
 import time
-env = gym.make('SpaceInvaders-v0')
+env = gym.make('Pong-v0')
 env.reset()
 
 for i in range(1000):

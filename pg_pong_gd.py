@@ -66,17 +66,35 @@ def policy_forward(x):
     A2 = sigmoid(Z2)
     return A1, A2, Z1  # return probability of taking action 2, and hidden state
 
+def policy_forward_org(x):
+    h = np.dot(model['W1'], x)
+    h[h < 0] = 0  # ReLU nonlinearity
+    logp = np.dot(model['W2'], h)
+    p = sigmoid(logp)
+    return p, h  # return probability of taking action 2, and hidden state
 
 def policy_backward(A1, Z1, dZ2, X):
     m = dZ2.shape[1]
     W2 = model["W2"]
 
-    dW2 = np.dot(dZ2, A1.T) / m
+    dW2 = np.dot(dZ2, A1.T)
     dZ1 = np.dot(W2.T, dZ2)
-    dZ1[Z1 < 0] = 0  # backpro prelu
-    dW1 = np.dot(dZ1, X.T) / m
+    dZ1_tmp = np.dot(W2.T, dZ2)
+    dZ1[Z1 <= 0] = 0  # backpro prelu, here different from the NG's formula, but seems Ok too
+    dW1 = np.dot(dZ1, X.T)
+    return {'W1': dW1, 'W2': dW2, 'dZ1': dZ1}
 
-    return {'W1': dW1, 'W2': dW2}
+def policy_backward_org(eph, epdlogp, epx):  # parameter (A1, dZ2)
+    """ backward pass. (eph is array of intermediate hidden states) """
+    dW2 = np.dot(eph.T, epdlogp).ravel()  # dW2 = A1.T multi dZ2
+    # dZ1 = dZ2 multi (W2).T  = np.outer(dZ2, W2), because dZ2 and W2 are both 1 dim vector,
+    # in this case matmul equals to outer
+    dh = np.outer(epdlogp, model['W2'])   # shape: (1227, 200)
+    dh_tmp = np.outer(epdlogp, model['W2'])  # shape: (1227, 200)
+    # dZ1 = dZ1 times g1'(Z1), here we only have A1, but A1 = max(0, Z1), so in the following we check if A1<=0
+    dh[eph <= 0] = 0  # backpro prelu
+    dW1 = np.dot(dh.T, epx)  # dW1 = dZ1.T multi X, dim is (200, 1227) multi (1227, 6400) = (200, 6400)
+    return {'W1': dW1, 'W2': dW2, 'dZ1': dh}
 
 
 env = gym.make("Pong-v0")
@@ -98,6 +116,11 @@ while True:
 
     # forward the policy network and sample an action from the returned probability
     A1, A2, Z1 = policy_forward(x)  # only return the result of a single input
+    ''''''
+    A2_org, A1_org = policy_forward_org(x)  # only return the result of a single input
+    assert np.array_equal(A2, A2_org)
+    assert np.array_equal(A1, A1_org)
+
     action = 2 if np.random.uniform() < A2 else 3  # roll the dice! np.random.uniform(): Draw samples from a uniform distribution.
 
     # record various intermediates (needed later for backprop)
@@ -124,7 +147,7 @@ while True:
         epA1 = np.hstack(A1s)
         epdZ2 = np.hstack(dZ2s)
         epr = np.vstack(drs)
-        xs, A1s, Z1s, dZ2s, drs = [], [], [], [], []  # reset array memory
+
 
         # compute the discounted reward backwards through time
         discounted_epr = discount_rewards(epr)
@@ -134,6 +157,22 @@ while True:
 
         epdZ2 *= discounted_epr.T  # modulate the gradient with advantage (PG magic happens right here.)
         grad = policy_backward(epA1, epZ1, epdZ2, epx)
+
+        # debug compare to original code
+        #epx_org = np.vstack(xs)
+        #eph_org = np.vstack(hs)
+        #epdlogp_org = np.vstack(dlogps)
+
+        grad_org = policy_backward_org(epA1.T, epdZ2.T, epx.T)
+        W2 = grad_org['W2'].reshape((H, 1)).T
+        assert np.array_equal(grad['W2'], W2)
+        assert np.array_equal(grad['dZ1'], grad_org['dZ1'].T)
+        assert np.array_equal(grad['W1'], grad_org['W1'])
+
+        # end of debug compare to original code
+
+        xs, A1s, Z1s, dZ2s, drs = [], [], [], [], []  # reset array memory
+
         for k in model:
             grad_buffer[k] += grad[k]  # accumulate grad over batch
 

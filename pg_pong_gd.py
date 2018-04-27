@@ -20,7 +20,7 @@ if resume:
     model = pickle.load(open('save.p', 'rb'))
 else:
     model = {}
-    # np.random.randn: Return a sample (or samples) from the “standard normal” distribution.
+    # np.random.randn: Return a sample (or samples) from the "standard normal" distribution.
     model['W1'] = np.random.randn(H, D) / np.sqrt(
         D)  # "Xavier" initialization: setting the variance of W[l] to sqrt(1/n[l-1]) and mean to 0
     model['W2'] = np.random.randn(1, H) / np.sqrt(H)

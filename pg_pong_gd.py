@@ -150,9 +150,19 @@ while True:
         print('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
         if episode_number % 100 == 0:
             pickle.dump(model, open('save.p', 'wb'))
+
+        # save current ep_num to the file
+        with open('ep_num', 'a') as file:
+           log_str = 'ep: ' + str(episode_number) + '\t' + 'reward: ' + str(reward_sum) + '\t' + \
+                     'reward_mean: ' + str(running_reward) + '\n'
+           file.write(log_str)
+        file.closed
+
         reward_sum = 0
         observation = env.reset()  # reset env
         prev_x = None
+
+
 
     if reward != 0:  # Pong has either +1 or -1 reward exactly when game ends.
         print(('ep %d: game finished, reward: %f' % (episode_number, reward)) + ('' if reward == -1 else ' !!!!!!!!'))

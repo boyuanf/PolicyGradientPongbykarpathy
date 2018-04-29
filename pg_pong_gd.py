@@ -4,6 +4,7 @@
 import numpy as np
 import pickle
 import gym
+import time
 
 # hyperparameters
 H = 200  # number of hidden layer neurons
@@ -12,18 +13,14 @@ learning_rate = 1e-3
 gamma = 0.99  # discount factor for reward
 decay_rate = 0.99  # decay factor for RMSProp leaky sum of grad^2
 resume = True  # resume from previous checkpoint?
-render = False
-
-if resume:
-    testmodel = pickle.load(open('testsave.p', 'rb'))
-    print(testmodel)
+render = True
 
 
 # model initialization
 D = 80 * 80  # input dimensionality: 80x80 grid
 if resume:
-    model = pickle.load(open('save.p', 'rb'))
-    #model = pickle.load(open('save.p', 'rb'), encoding="iso-8859-1")
+    model = pickle.load(open('save.p', 'rb'), encoding="iso-8859-1")
+    #model = pickle.load(open('save.p', 'rb'))
 else:
     model = {}
     # np.random.randn: Return a sample (or samples) from the "standard normal" distribution.
@@ -93,6 +90,7 @@ episode_number = 0
 while True:
     if render:
         env.render()
+        time.sleep(0.01)
 
     # preprocess the observation, set input to network to be difference image
     cur_x = prepro(observation)
@@ -157,10 +155,6 @@ while True:
         if episode_number % 100 == 0:
             pickle.dump(model, open('save.p', 'wb'))
 
-        if episode_number % 3 == 0:
-            pickle.dump(model, open('save.p', 'wb'))
-        pickle.dump(model, open('testsave.p', 'wb'))
-
         # save current ep_num to the file
         with open('ep_num', 'a') as file:
            log_str = 'ep: ' + str(episode_number) + '\t' + 'reward: ' + str(reward_sum) + '\t' + \
@@ -171,8 +165,6 @@ while True:
         reward_sum = 0
         observation = env.reset()  # reset env
         prev_x = None
-
-
 
     if reward != 0:  # Pong has either +1 or -1 reward exactly when game ends.
         print(('ep %d: game finished, reward: %f' % (episode_number, reward)) + ('' if reward == -1 else ' !!!!!!!!'))

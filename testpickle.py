@@ -15,8 +15,6 @@ favorite_color = {"lion": "yellow", "kitty": "red"}  # create a dictionary
 pickle.dump(favorite_color, open("test.p", "wb"))  # save it into a file named save.p
 #favorite_color = pickle.load(open("test.p", "rb"), encoding='iso-8859-1')
 favorite_color = pickle.load(open("test.p", "rb"))
-
-
 print(favorite_color)
 
 example_dict = {1:"6",2:"2",3:"f"}
@@ -30,3 +28,6 @@ example_dict = pickle.load(pickle_in)
 
 print(example_dict)
 
+pickle.dump(favorite_color, open('save.p', 'wb'))
+testp = pickle.load(open("save.p", "rb"))
+print(testp)

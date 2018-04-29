@@ -1,1 +1,7 @@
 ep: 1	reward: 10.0	reward_mean: 10.0
+ep: 1	reward: -20.0	reward_mean: -20.0
+ep: 1	reward: -19.0	reward_mean: -19.0
+ep: 2	reward: -21.0	reward_mean: -19.02
+ep: 3	reward: -21.0	reward_mean: -19.0398
+ep: 4	reward: -20.0	reward_mean: -19.049401999999997
+ep: 5	reward: -21.0	reward_mean: -19.06890798

@@ -1,5 +1,9 @@
 import pickle
 
+testp = pickle.load(open("save_from_c5.p", "rb"))
+print(testp)
+
+
 a = {'hello': 'world'}
 
 with open('filename.pickle', 'wb') as handle:
@@ -28,6 +32,3 @@ example_dict = pickle.load(pickle_in)
 
 print(example_dict)
 
-pickle.dump(favorite_color, open('save.p', 'wb'))
-testp = pickle.load(open("save.p", "rb"))
-print(testp)

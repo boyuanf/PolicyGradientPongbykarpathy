@@ -86,6 +86,13 @@ def discount_rewards(r):
     return discounted_r
 
 
+def normalize_rewards(R):
+    mean, var = tf.nn.moments(R, axes=[0])
+    R = tf.subtract(R, mean)
+    R = tf.divide(R, var)
+    return R
+
+
 def compute_cost(Z2, Y, Rewards):
     """
     Computes the cost
@@ -115,25 +122,25 @@ def create_placeholders(n_x):
     X = tf.placeholder(tf.float32, shape=(n_x, None), name="X")
     Y = tf.placeholder(tf.float32, shape=(1, None), name="Y")
     R = tf.placeholder(tf.float32, shape=(1, None), name="Z2")
-
     return X, Y, R
+
 
 def train():
     ops.reset_default_graph()  # to be able to rerun the model without overwriting tf variables
     tf.set_random_seed(1)  # to keep consistent results
-    X, Y, R = create_placeholders(input_size)
+    X, Y, Reward = create_placeholders(input_size)
     env = gym.make("Pong-v0")
     observation = env.reset()
     running_reward = None
     reward_sum = 0
     episode_number = 0
-    drs = []
+    R, Y = [], []
     # Initialize all the variables
     init = tf.global_variables_initializer()
     # Forward propagation
     Z2, A2 = forward_propagation(X)
     # Cost function: Add cost function to tensorflow graph
-    cost = compute_cost(Z2, Y, R)
+    cost = compute_cost(Z2, Y, Reward)
     # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
     optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate).minimize(cost)
 
@@ -153,7 +160,7 @@ def train():
             # preprocess the observation, set input to network to be difference image
             cur_x, prev_x = prepro(observation, prev_x)
 
-            Z2_eval, A2_eval = sess.run([Z2, A2], feed_dict={X: cur_x})
+            A2_eval = sess.run([A2], feed_dict={X: cur_x})
 
             if np.random.uniform() < A2_eval:
                 action = 2
@@ -165,27 +172,24 @@ def train():
             # step the environment and get new measurements
             observation, reward, done, info = env.step(action)
             reward_sum += reward
-            drs.append(reward)  # record reward (has to be done after we call step() to get reward for previous action)
-
-            # stack input and intermediate result
-            Y = tf.stack([Y, y], axis=1)
+            R.append(reward)  # record reward (has to be done after we call step() to get reward for previous action)
+            Y.append(y)
 
             if done:  # an episode finished
                 episode_number += 1
-                epr = np.vstack(drs)
+                # stack input and intermediate result
+                ep_R = np.vstack(R)
+                ep_Y = np.hstack(Y)
 
                 # compute the discounted reward backwards through time
-                discounted_epr = discount_rewards(epr)
-                discounted_epr = tf.cast(discounted_epr, tf.float32)
+                discounted_ep_R = discount_rewards(ep_R)
                 # standardize the rewards to be unit normal (helps control the gradient estimator variance)
-                mean, var = tf.nn.moments(discounted_epr, axes=[1])
-                discounted_epr -= mean
-                discounted_epr /= var
+                normal_ep_R = normalize_rewards(discounted_ep_R)
+                reward_eval = sess.run(normal_ep_R)
 
-                _, cost = sess.run([optimizer, cost], feed_dict={X: cur_x, Y: Y, R: discounted_epr})
+                _, cost = sess.run([optimizer, cost], feed_dict={X: cur_x, Y: ep_Y, Reward: reward_eval})
 
-                Y = tf.constant([])
-                drs = []
+                R, Y = [], []
 
             # boring book-keeping
             running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01

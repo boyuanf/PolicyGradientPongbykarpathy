@@ -32,25 +32,38 @@ tf.app.flags.DEFINE_boolean('render', False,
                             """Whether to display the game.""")
 
 input_size = 80 * 80  # input dimensionality: 80x80 grid
+observation_size = 210 * 160 * 3  # observation dimensionality: 210x160x3
 
 # TO start the tensorboard: tensorboard: 1.5.1, tensorflow: 1.5.0
 # python -m tensorboard.main --logdir=C:\Boyuan\MyPython\MNIST_Dataset
 
+def create_placeholders(input_size):
+    """
+        Creates the placeholders for the tensorflow session.
+
+        Arguments:
+        input_size -- scalar, size of an image vector (num_px * num_px = 80 * 80 = 6400)
+    """
+    X = tf.placeholder(tf.float32, shape=(input_size, None), name="X")
+    Y = tf.placeholder(tf.float32, shape=(1, None), name="Y")
+    R = tf.placeholder(tf.float32, shape=(1, None), name="Z2")
+    return X, Y, R
 
 # get an input image
-def prepro(I, prev_x):
+def prepro(I):
     """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector """
     I = I[35:195]  # crop
     I = I[::2, ::2, 0]  # downsample by factor of 2, only take the first color channel
     I[I == 144] = 0  # erase background (background type 1)
     I[I == 109] = 0  # erase background (background type 2)
     I[I != 0] = 1  # everything else (paddles, ball) just set to 1
-    cur_x = I.astype(np.float).ravel()  # flatten to 1D array
-    x = cur_x - prev_x if prev_x is not None else np.zeros(input_size)
+    tf.get_variable_scope().reuse_variables()
+    prev_x = tf.get_variable("prev_x", [input_size, 1], dtype=tf.float32, initializer=tf.zeros_initializer)  # shared
+    cur_x = tf.cast(I, tf.float32)
+    x = tf.cond((tf.count_nonzero(prev_x) != 0), lambda: tf.subtract(cur_x, prev_x), lambda: tf.zeros(input_size, tf.float32))
     prev_x = cur_x
-    x = x.reshape((x.shape[0], 1))
-    x_tf = tf.cast(x, tf.float32)
-    return x_tf, prev_x
+    #x = x.reshape((x.shape[0], 1))
+    return x
 
 
 def forward_propagation(X):
@@ -63,7 +76,6 @@ def forward_propagation(X):
     """
     he_init = tf.contrib.layers.variance_scaling_initializer()
     l1_regularizer = tf.contrib.layers.l1_regularizer(FLAGS.regularizer_scale)
-
     Z1 = tf.layers.dense(inputs=X, units=FLAGS.layer1_unit_num, kernel_initializer=he_init,
                         kernel_regularizer=l1_regularizer, name="layer_1")
     A1 = tf.nn.relu(Z1)
@@ -72,12 +84,11 @@ def forward_propagation(X):
     return Z2, A2
 
 
-# TODO: discount_rewards() need to change to tf later
 def discount_rewards(r):
     """ take 1D float array of rewards and compute discounted reward """
     """ Explained in 'More general advantage functions' section """
-    discounted_r = np.zeros_like(r)
-    running_add = 0
+    discounted_r = tf.zeros(r.shape, tf.float32)
+    running_add = tf.constant(0)
     for t in reversed(range(0, r.size)):
         if r[t] != 0:
             running_add = 0  # reset the sum, since this was a game boundary (pong specific!)
@@ -112,18 +123,6 @@ def compute_cost(Z2, Y, Rewards):
     cost = tf.reduce_mean(tf.multiply(Rewards, cross_entropy, name="rewards"))
     return cost
 
-def create_placeholders(n_x):
-    """
-        Creates the placeholders for the tensorflow session.
-
-        Arguments:
-        n_x -- scalar, size of an image vector (num_px * num_px = 80 * 80 = 6400)
-    """
-    X = tf.placeholder(tf.float32, shape=(n_x, None), name="X")
-    Y = tf.placeholder(tf.float32, shape=(1, None), name="Y")
-    R = tf.placeholder(tf.float32, shape=(1, None), name="Z2")
-    return X, Y, R
-
 
 def train():
     ops.reset_default_graph()  # to be able to rerun the model without overwriting tf variables
@@ -149,7 +148,7 @@ def train():
         # Run the initialization
         sess.run(init)
 
-        prev_x = None  # used in computing the difference frame
+        prev_x = tf.get_variable("prev_x", [input_size, 1], dtype=tf.float32, initializer=tf.zeros_initializer)  # used in computing the difference frame
         # Do the training loop
         for ep in range(FLAGS.num_episode):
 
@@ -158,7 +157,8 @@ def train():
                 time.sleep(0.01)
 
             # preprocess the observation, set input to network to be difference image
-            cur_x, prev_x = prepro(observation, prev_x)
+            cur_x = prepro(observation)
+            cur_x_eval = sess.run(cur_x)
 
             A2_eval = sess.run([A2], feed_dict={X: cur_x})
 

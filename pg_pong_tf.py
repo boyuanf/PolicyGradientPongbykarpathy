@@ -18,13 +18,13 @@ tf.app.flags.DEFINE_integer('num_episode', 10000,
                             """number of epochs of the optimization loop.""")
 tf.app.flags.DEFINE_integer('layer1_unit_num', 200,
                             """Number of the hidden unit in layer1.""")
-tf.app.flags.DEFINE_integer('regularizer_scale', 0.01,
+tf.app.flags.DEFINE_float('regularizer_scale', 0.01,
                             """L1 regularizer scale.""")
 tf.app.flags.DEFINE_integer('batch_size', 10,
                             """every how many episodes to do a param update.""")
-tf.app.flags.DEFINE_integer('learning_rate', 1e-3,
+tf.app.flags.DEFINE_float('learning_rate', 1e-3,
                             """Number of batches to run.""")
-tf.app.flags.DEFINE_integer('gamma', 0.99,
+tf.app.flags.DEFINE_float('gamma', 0.99,
                             """discount factor for reward.""")
 tf.app.flags.DEFINE_boolean('resume', False,
                             """Whether to resume from previous checkpoint.""")
@@ -44,10 +44,11 @@ def create_placeholders(input_size):
         Arguments:
         input_size -- scalar, size of an image vector (num_px * num_px = 80 * 80 = 6400)
     """
-    X = tf.placeholder(tf.float32, shape=(input_size, None), name="X")
-    Y = tf.placeholder(tf.float32, shape=(1, None), name="Y")
-    R = tf.placeholder(tf.float32, shape=(1, None), name="Z2")
+    X = tf.placeholder(tf.float32, shape=(None, input_size), name="X")
+    Y = tf.placeholder(tf.float32, shape=(None, 1), name="Y")
+    R = tf.placeholder(tf.float32, shape=(None, 1), name="Z2")
     return X, Y, R
+
 
 # get an input image
 def prepro(I):
@@ -58,11 +59,11 @@ def prepro(I):
     I[I == 109] = 0  # erase background (background type 2)
     I[I != 0] = 1  # everything else (paddles, ball) just set to 1
     tf.get_variable_scope().reuse_variables()
-    prev_x = tf.get_variable("prev_x", [input_size, 1], dtype=tf.float32, initializer=tf.zeros_initializer)  # shared
-    cur_x = tf.cast(I, tf.float32)
-    x = tf.cond((tf.count_nonzero(prev_x) != 0), lambda: tf.subtract(cur_x, prev_x), lambda: tf.zeros(input_size, tf.float32))
+    prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32, initializer=tf.zeros_initializer)  # shared
+    cur_x = tf.cast(tf.reshape(I, [1, input_size]), tf.float32)
+    x = tf.cond(tf.equal(tf.count_nonzero(prev_x), 0), lambda: tf.zeros([1, input_size], tf.float32),
+                 lambda: tf.subtract(cur_x, prev_x))
     prev_x = cur_x
-    #x = x.reshape((x.shape[0], 1))
     return x
 
 
@@ -70,7 +71,7 @@ def forward_propagation(X):
     """
         Implements the forward propagation for the model
         Arguments:
-        X -- input dataset placeholder, of shape (input size, number of examples)
+        X -- input dataset placeholder, of shape (number of examples, input size)
         Returns:
         Z2 -- the output of the last LINEAR unit
     """
@@ -117,9 +118,7 @@ def compute_cost(Z2, Y, Rewards):
     """
 
     # to fit the tensorflow requirement for tf.nn.sigmoid_cross_entropy_with_logits(...,...)
-    logits = tf.transpose(Z2)
-    labels = tf.transpose(Y)
-    cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=labels)
+    cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=Z2, labels=Y)
     cost = tf.reduce_mean(tf.multiply(Rewards, cross_entropy, name="rewards"))
     return cost
 
@@ -133,22 +132,24 @@ def train():
     running_reward = None
     reward_sum = 0
     episode_number = 0
-    R, Y = [], []
-    # Initialize all the variables
-    init = tf.global_variables_initializer()
+    R, Y_list = [], []
     # Forward propagation
     Z2, A2 = forward_propagation(X)
     # Cost function: Add cost function to tensorflow graph
     cost = compute_cost(Z2, Y, Reward)
     # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
     optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate).minimize(cost)
+    prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32,
+                             initializer=tf.zeros_initializer)  # used in computing the difference frame
+
+    # Initialize all the variables
+    init = tf.global_variables_initializer()
 
     # Start the session to compute the tensorflow graph
     with tf.Session() as sess:
         # Run the initialization
         sess.run(init)
 
-        prev_x = tf.get_variable("prev_x", [input_size, 1], dtype=tf.float32, initializer=tf.zeros_initializer)  # used in computing the difference frame
         # Do the training loop
         for ep in range(FLAGS.num_episode):
 
@@ -173,13 +174,13 @@ def train():
             observation, reward, done, info = env.step(action)
             reward_sum += reward
             R.append(reward)  # record reward (has to be done after we call step() to get reward for previous action)
-            Y.append(y)
+            Y_list.append(y)
 
             if done:  # an episode finished
                 episode_number += 1
                 # stack input and intermediate result
                 ep_R = np.vstack(R)
-                ep_Y = np.hstack(Y)
+                ep_Y = np.vstack(Y_list)
 
                 # compute the discounted reward backwards through time
                 discounted_ep_R = discount_rewards(ep_R)
@@ -189,7 +190,7 @@ def train():
 
                 _, cost = sess.run([optimizer, cost], feed_dict={X: cur_x, Y: ep_Y, Reward: reward_eval})
 
-                R, Y = [], []
+                R, Y_list = [], []
 
             # boring book-keeping
             running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01

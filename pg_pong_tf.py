@@ -57,14 +57,15 @@ def forward_propagation(X):
         Returns:
         Z2 -- the output of the last LINEAR unit
     """
-    he_init = tf.contrib.layers.variance_scaling_initializer()
-    l1_regularizer = tf.contrib.layers.l1_regularizer(FLAGS.regularizer_scale)
-    Z1 = tf.layers.dense(inputs=X, units=FLAGS.layer1_unit_num, kernel_initializer=he_init,
-                        kernel_regularizer=l1_regularizer, name="layer_1")
-    A1 = tf.nn.relu(Z1)
-    Z2 = tf.layers.dense(inputs=A1, units=1, kernel_initializer=he_init, name="layer_2")
-    A2 = tf.nn.sigmoid(Z2)
-    return Z2, A2
+    with tf.name_scope("forward_propagation"):
+        he_init = tf.contrib.layers.variance_scaling_initializer()
+        l1_regularizer = tf.contrib.layers.l1_regularizer(FLAGS.regularizer_scale)
+        Z1 = tf.layers.dense(inputs=X, units=FLAGS.layer1_unit_num, kernel_initializer=he_init,
+                            kernel_regularizer=l1_regularizer, name="Z1")
+        A1 = tf.nn.relu(Z1, name='A1')
+        Z2 = tf.layers.dense(inputs=A1, units=1, kernel_initializer=he_init, name="Z2")
+        A2 = tf.nn.sigmoid(Z2, name='A2')
+        return Z2, A2
 
 
 def discount_rewards(r):
@@ -81,10 +82,11 @@ def discount_rewards(r):
 
 
 def normalize_rewards(R):
-    mean, var = tf.nn.moments(R, axes=[0])
-    R = tf.subtract(R, mean)
-    R = tf.divide(R, var)
-    return R
+    with tf.name_scope("normalize_rewards"):
+        mean, var = tf.nn.moments(R, axes=[0], name='MeanVar')
+        R = tf.subtract(R, mean)
+        R = tf.divide(R, var)
+        return R
 
 
 def compute_cost(Z2, Y, Rewards):
@@ -94,34 +96,38 @@ def compute_cost(Z2, Y, Rewards):
     Arguments:
     Z2 -- output of forward propagation (output of the last LINEAR unit), of shape (1, number of examples)
     Y -- "true" labels vector placeholder, same shape as Z2
+    Rewards -- the rewards coressponding to each of the output, same shape as Z2
 
     Returns:
     cost - Tensor of the cost function
     """
 
     # to fit the tensorflow requirement for tf.nn.sigmoid_cross_entropy_with_logits(...,...)
-    cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=Z2, labels=Y)
-    cost = tf.reduce_mean(tf.multiply(Rewards, cross_entropy, name="rewards"))
-    return cost
+    with tf.name_scope("cost"):
+        cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=Z2, labels=Y, name='cross_entropy')
+        cost = tf.reduce_mean(tf.multiply(Rewards, cross_entropy, name="cross_reward"), name='cross_cost')
+        return cost
+
 
 # get an input image
-def prepro(I, new_ep):
+def pre_processing(I, new_ep):
     """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector """
-    I = I[35:195]  # crop
-    I = I[::2, ::2, 0]  # downsample by factor of 2, only take the first color channel
-    I[I == 144] = 0  # erase background (background type 1)
-    I[I == 109] = 0  # erase background (background type 2)
-    I[I != 0] = 1  # everything else (paddles, ball) just set to 1
-    tf.get_variable_scope().reuse_variables()
-    prev_x = tf.get_variable("prev_x")  # shared
-    cur_x = tf.cast(tf.reshape(I, [1, input_size]), tf.float32)
-    if new_ep:
-        x = tf.zeros([1, input_size], tf.float32)
-        new_ep = False
-    else:
-        x = tf.subtract(cur_x, prev_x)
-    prev_x_ops = tf.assign(prev_x, cur_x)
-    return x, new_ep, prev_x_ops
+    with tf.name_scope("pre_processing"):
+        I = I[35:195]  # crop
+        I = I[::2, ::2, 0]  # downsample by factor of 2, only take the first color channel
+        I[I == 144] = 0  # erase background (background type 1)
+        I[I == 109] = 0  # erase background (background type 2)
+        I[I != 0] = 1  # everything else (paddles, ball) just set to 1
+        tf.get_variable_scope().reuse_variables()
+        prev_x = tf.get_variable("prev_x")  # shared
+        cur_x = tf.cast(tf.reshape(I, [1, input_size]), tf.float32)
+        if new_ep:
+            x = tf.zeros([1, input_size], tf.float32, name='set_x_0')
+            new_ep = False
+        else:
+            x = tf.subtract(cur_x, prev_x, name='set_x_diff')
+        prev_x_ops = tf.assign(prev_x, cur_x, name='update_prev')
+        return x, new_ep, prev_x_ops
 
 
 def train():
@@ -134,18 +140,21 @@ def train():
     reward_sum = 0
     episode_number = 0
     R, X_list, Y_list = [], [], []
-    # Forward propagation
-    Z2, A2 = forward_propagation(X)
-    # Cost function: Add cost function to tensorflow graph
-    cost = compute_cost(Z2, Y, Reward)
-    # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
-    optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate).minimize(cost)
+    new_ep = True
     prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32,
                              initializer=tf.zeros_initializer)  # used in computing the difference frame
 
+    with tf.name_scope("train"):
+        # Forward propagation
+        Z2, A2 = forward_propagation(X)
+        # Cost function: Add cost function to tensorflow graph
+        cost = compute_cost(Z2, Y, Reward)
+        # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
+        optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, name='AdamOptimizer').minimize(cost)
+
     # Initialize all the variables
-    init = tf.global_variables_initializer()
-    new_ep = True
+    with tf.name_scope("init"):
+        init = tf.global_variables_initializer()
 
     # Start the session to compute the tensorflow graph
     with tf.Session() as sess:
@@ -160,7 +169,7 @@ def train():
                 time.sleep(0.01)
 
             # preprocess the observation, set input to network to be difference image
-            x, new_ep, prev_x_ops = prepro(observation, new_ep)
+            x, new_ep, prev_x_ops = pre_processing(observation, new_ep)
             x_eval, _ = sess.run([x, prev_x_ops])
 
             A2_eval = sess.run([A2], feed_dict={X: x_eval})

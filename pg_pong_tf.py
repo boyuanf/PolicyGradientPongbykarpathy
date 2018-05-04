@@ -51,7 +51,7 @@ def create_placeholders(input_size):
 
 
 # get an input image
-def prepro(I):
+def prepro(I, new_ep):
     """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector """
     I = I[35:195]  # crop
     I = I[::2, ::2, 0]  # downsample by factor of 2, only take the first color channel
@@ -59,12 +59,15 @@ def prepro(I):
     I[I == 109] = 0  # erase background (background type 2)
     I[I != 0] = 1  # everything else (paddles, ball) just set to 1
     tf.get_variable_scope().reuse_variables()
-    prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32, initializer=tf.zeros_initializer)  # shared
+    prev_x = tf.get_variable("prev_x")  # shared
     cur_x = tf.cast(tf.reshape(I, [1, input_size]), tf.float32)
-    x = tf.cond(tf.equal(tf.count_nonzero(prev_x), 0), lambda: tf.zeros([1, input_size], tf.float32),
-                 lambda: tf.subtract(cur_x, prev_x))
+    if new_ep:
+        x = tf.zeros([1, input_size], tf.float32)
+        new_ep = False
+    else:
+        x = tf.subtract(cur_x, prev_x)
     prev_x = cur_x
-    return x
+    return x, new_ep, prev_x
 
 
 def forward_propagation(X):
@@ -132,7 +135,7 @@ def train():
     running_reward = None
     reward_sum = 0
     episode_number = 0
-    R, Y_list = [], []
+    R, X_list, Y_list = [], [], []
     # Forward propagation
     Z2, A2 = forward_propagation(X)
     # Cost function: Add cost function to tensorflow graph
@@ -144,6 +147,7 @@ def train():
 
     # Initialize all the variables
     init = tf.global_variables_initializer()
+    new_ep = True
 
     # Start the session to compute the tensorflow graph
     with tf.Session() as sess:
@@ -158,12 +162,13 @@ def train():
                 time.sleep(0.01)
 
             # preprocess the observation, set input to network to be difference image
-            cur_x = prepro(observation)
-            cur_x_eval = sess.run(cur_x)
+            x, new_ep, prev_x = prepro(observation, new_ep)
+            x_eval, prev_x_eval = sess.run([x, prev_x])
+            #cur_x_eval = sess.run(cur_x)
 
-            A2_eval = sess.run([A2], feed_dict={X: cur_x})
+            A2_eval = sess.run([A2], feed_dict={X: x_eval})
 
-            if np.random.uniform() < A2_eval:
+            if np.random.uniform() < A2_eval[0][0][0]:
                 action = 2
                 y = 1
             else:
@@ -175,12 +180,14 @@ def train():
             reward_sum += reward
             R.append(reward)  # record reward (has to be done after we call step() to get reward for previous action)
             Y_list.append(y)
+            X_list.append(x_eval)
 
             if done:  # an episode finished
                 episode_number += 1
                 # stack input and intermediate result
                 ep_R = np.vstack(R)
                 ep_Y = np.vstack(Y_list)
+                ep_X = np.vstack(X_list)
 
                 # compute the discounted reward backwards through time
                 discounted_ep_R = discount_rewards(ep_R)
@@ -188,17 +195,17 @@ def train():
                 normal_ep_R = normalize_rewards(discounted_ep_R)
                 reward_eval = sess.run(normal_ep_R)
 
-                _, cost = sess.run([optimizer, cost], feed_dict={X: cur_x, Y: ep_Y, Reward: reward_eval})
+                _, cost = sess.run([optimizer, cost], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
 
-                R, Y_list = [], []
+                R, X_list, Y_list = [], [], []
 
-            # boring book-keeping
-            running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
-            print('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
+                # boring book-keeping
+                running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
+                print('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
 
-            reward_sum = 0
-            observation = env.reset()  # reset env
-            prev_x = None
+                reward_sum = 0
+                observation = env.reset()  # reset env
+                new_ep = True
 
             if reward != 0:  # Pong has either +1 or -1 reward exactly when game ends.
                 print(('ep %d: game finished, reward: %f' % (episode_number, reward)) + ('' if reward == -1 else ' !!!!!!!!'))

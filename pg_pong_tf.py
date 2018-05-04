@@ -49,27 +49,6 @@ def create_placeholders(input_size):
     R = tf.placeholder(tf.float32, shape=(None, 1), name="Z2")
     return X, Y, R
 
-
-# get an input image
-def prepro(I, new_ep):
-    """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector """
-    I = I[35:195]  # crop
-    I = I[::2, ::2, 0]  # downsample by factor of 2, only take the first color channel
-    I[I == 144] = 0  # erase background (background type 1)
-    I[I == 109] = 0  # erase background (background type 2)
-    I[I != 0] = 1  # everything else (paddles, ball) just set to 1
-    tf.get_variable_scope().reuse_variables()
-    prev_x = tf.get_variable("prev_x")  # shared
-    cur_x = tf.cast(tf.reshape(I, [1, input_size]), tf.float32)
-    if new_ep:
-        x = tf.zeros([1, input_size], tf.float32)
-        new_ep = False
-    else:
-        x = tf.subtract(cur_x, prev_x)
-    prev_x = cur_x
-    return x, new_ep, prev_x
-
-
 def forward_propagation(X):
     """
         Implements the forward propagation for the model
@@ -91,8 +70,8 @@ def forward_propagation(X):
 def discount_rewards(r):
     """ take 1D float array of rewards and compute discounted reward """
     """ Explained in 'More general advantage functions' section """
-    discounted_r = tf.zeros(r.shape, tf.float32)
-    running_add = tf.constant(0)
+    discounted_r = np.zeros_like(r)
+    running_add = 0
     for t in reversed(range(0, r.size)):
         if r[t] != 0:
             running_add = 0  # reset the sum, since this was a game boundary (pong specific!)
@@ -124,6 +103,25 @@ def compute_cost(Z2, Y, Rewards):
     cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=Z2, labels=Y)
     cost = tf.reduce_mean(tf.multiply(Rewards, cross_entropy, name="rewards"))
     return cost
+
+# get an input image
+def prepro(I, new_ep):
+    """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector """
+    I = I[35:195]  # crop
+    I = I[::2, ::2, 0]  # downsample by factor of 2, only take the first color channel
+    I[I == 144] = 0  # erase background (background type 1)
+    I[I == 109] = 0  # erase background (background type 2)
+    I[I != 0] = 1  # everything else (paddles, ball) just set to 1
+    tf.get_variable_scope().reuse_variables()
+    prev_x = tf.get_variable("prev_x")  # shared
+    cur_x = tf.cast(tf.reshape(I, [1, input_size]), tf.float32)
+    if new_ep:
+        x = tf.zeros([1, input_size], tf.float32)
+        new_ep = False
+    else:
+        x = tf.subtract(cur_x, prev_x)
+    prev_x_ops = tf.assign(prev_x, cur_x)
+    return x, new_ep, prev_x_ops
 
 
 def train():
@@ -162,9 +160,8 @@ def train():
                 time.sleep(0.01)
 
             # preprocess the observation, set input to network to be difference image
-            x, new_ep, prev_x = prepro(observation, new_ep)
-            x_eval, prev_x_eval = sess.run([x, prev_x])
-            #cur_x_eval = sess.run(cur_x)
+            x, new_ep, prev_x_ops = prepro(observation, new_ep)
+            x_eval, _ = sess.run([x, prev_x_ops])
 
             A2_eval = sess.run([A2], feed_dict={X: x_eval})
 
@@ -192,16 +189,17 @@ def train():
                 # compute the discounted reward backwards through time
                 discounted_ep_R = discount_rewards(ep_R)
                 # standardize the rewards to be unit normal (helps control the gradient estimator variance)
-                normal_ep_R = normalize_rewards(discounted_ep_R)
+                normal_ep_R = normalize_rewards(tf.cast(discounted_ep_R, tf.float32))
                 reward_eval = sess.run(normal_ep_R)
 
-                _, cost = sess.run([optimizer, cost], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
+                _, cost_eval = sess.run([optimizer, cost], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
 
                 R, X_list, Y_list = [], [], []
 
                 # boring book-keeping
                 running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
                 print('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
+                print('cost is: ', cost_eval)
 
                 reward_sum = 0
                 observation = env.reset()  # reset env

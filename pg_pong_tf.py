@@ -118,17 +118,16 @@ def pre_processing(I, new_ep):
         I[I == 144] = 0  # erase background (background type 1)
         I[I == 109] = 0  # erase background (background type 2)
         I[I != 0] = 1  # everything else (paddles, ball) just set to 1
-        with tf.variable_scope("image_processing", reuse=tf.AUTO_REUSE):
-            prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32,
-                                     initializer=tf.zeros_initializer)  # used in computing the difference frame, shared
-            cur_x = tf.cast(tf.reshape(I, [1, input_size]), tf.float32)
-            if new_ep:
-                x = tf.zeros([1, input_size], tf.float32, name='set_x_0')
-                new_ep = False
-            else:
-                x = tf.subtract(cur_x, prev_x, name='set_x_diff')
-            prev_x_ops = tf.assign(prev_x, cur_x, name='update_prev')
-            return x, new_ep, prev_x_ops
+        tf.get_variable_scope().reuse_variables()
+        prev_x = tf.get_variable("prev_x")  # shared
+        cur_x = tf.cast(tf.reshape(I, [1, input_size]), tf.float32)
+        if new_ep:
+            x = tf.zeros([1, input_size], tf.float32, name='set_x_0')
+            new_ep = False
+        else:
+            x = tf.subtract(cur_x, prev_x, name='set_x_diff')
+        prev_x_ops = tf.assign(prev_x, cur_x, name='update_prev')
+        return x, new_ep, prev_x_ops
 
 
 def train():
@@ -142,6 +141,8 @@ def train():
     episode_number = 0
     R, X_list, Y_list = [], [], []
     new_ep = True
+    prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32,
+                             initializer=tf.zeros_initializer)  # used in computing the difference frame
 
     with tf.name_scope("train"):
         # Forward propagation
@@ -150,9 +151,6 @@ def train():
         cost = compute_cost(Z2, Y, Reward)
         # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
         optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, name='AdamOptimizer').minimize(cost)
-
-    # preprocess the observation, set input to network to be difference image
-    x, new_ep, prev_x_ops = pre_processing(observation, new_ep)
 
     # Initialize all the variables
     with tf.name_scope("init"):
@@ -170,6 +168,8 @@ def train():
                 env.render()
                 time.sleep(0.01)
 
+            # preprocess the observation, set input to network to be difference image
+            x, new_ep, prev_x_ops = pre_processing(observation, new_ep)
             x_eval, _ = sess.run([x, prev_x_ops])
 
             A2_eval = sess.run([A2], feed_dict={X: x_eval})

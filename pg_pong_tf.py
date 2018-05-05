@@ -10,9 +10,9 @@ from tensorflow.python.framework import ops
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', './',
+tf.app.flags.DEFINE_string('train_dir', 'tf_train_log',
                            """Directory where to write event logs and checkpoint. """)
-tf.app.flags.DEFINE_string('checkpoint_file', './',
+tf.app.flags.DEFINE_string('checkpoint_file', 'pg_pong',
                            """Name of the checkpoint file """)
 tf.app.flags.DEFINE_integer('num_episode', 10000,
                             """number of epochs of the optimization loop.""")
@@ -106,6 +106,7 @@ def compute_cost(Z2, Y, Rewards):
     with tf.name_scope("cost"):
         cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=Z2, labels=Y, name='cross_entropy')
         cost = tf.reduce_mean(tf.multiply(Rewards, cross_entropy, name="cross_reward"), name='cross_cost')
+        tf.summary.scalar('log_loss', cost)
         return cost
 
 
@@ -156,13 +157,23 @@ def train():
     with tf.name_scope("init"):
         init = tf.global_variables_initializer()
 
+    now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    root_logdir = FLAGS.train_dir
+    log_dir = "{}\\run-{}-log".format(root_logdir, now)
+    file_writer = tf.summary.FileWriter(log_dir, tf.get_default_graph())
+    saver = tf.train.Saver()
+
     # Start the session to compute the tensorflow graph
     with tf.Session() as sess:
-        # Run the initialization
-        sess.run(init)
+
+        if FLAGS.resume:
+            saver.restore(sess, tf.train.latest_checkpoint(root_logdir))
+        else:
+            # Run the initialization
+            sess.run(init)
 
         # Do the training loop
-        for ep in range(FLAGS.num_episode):
+        while episode_number < FLAGS.num_episode:
 
             if FLAGS.render:
                 env.render()
@@ -201,7 +212,9 @@ def train():
                 normal_ep_R = normalize_rewards(tf.cast(discounted_ep_R, tf.float32))
                 reward_eval = sess.run(normal_ep_R)
 
-                _, cost_eval = sess.run([optimizer, cost], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
+                merged_summary = tf.summary.merge_all()
+                _, cost_eval, summary_str = sess.run([optimizer, cost, merged_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
+                file_writer.add_summary(summary_str, global_step=episode_number)
 
                 R, X_list, Y_list = [], [], []
 
@@ -209,6 +222,15 @@ def train():
                 running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
                 print('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
                 print('cost is: ', cost_eval)
+                # Add user data to TensorBoard
+                reward_mean_summary = tf.Summary(value=[tf.Summary.Value(tag="reward_mean", simple_value=running_reward)])
+                file_writer.add_summary(reward_mean_summary, global_step=episode_number)
+                # Save the model checkpoint periodically.
+                if episode_number % 100 == 0 or (episode_number + 1) == FLAGS.max_steps:
+                    now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+                    check_point_dir = "{}\\run-{}-checkpoint-{}-".format(root_logdir, now, FLAGS.checkpoint_file)
+                    checkpoint_path = os.path.join(check_point_dir, 'model.ckpt')
+                    saver.save(sess, checkpoint_path, global_step=episode_number)
 
                 reward_sum = 0
                 observation = env.reset()  # reset env
@@ -217,7 +239,7 @@ def train():
             if reward != 0:  # Pong has either +1 or -1 reward exactly when game ends.
                 print(('ep %d: game finished, reward: %f' % (episode_number, reward)) + ('' if reward == -1 else ' !!!!!!!!'))
 
-
+    file_writer.close()
 
 def main(argv=None):
     train()

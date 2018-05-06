@@ -10,10 +10,10 @@ from tensorflow.python.framework import ops
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('train_dir', 'tf_train_log',
+tf.app.flags.DEFINE_string('train_dir', 'tf_train_pong',
                            """Directory where to write event logs and checkpoint. """)
-tf.app.flags.DEFINE_string('checkpoint_file', 'pg_pong',
-                           """Name of the checkpoint file """)
+tf.app.flags.DEFINE_string('restore_file_path', '/home/boyuanf/PolicyGradientPongbykarpathy/tf_train_pong/run-20180506221616-checkpoint/',
+                           """Path of the restore file """)
 tf.app.flags.DEFINE_integer('num_episode', 10000,
                             """number of epochs of the optimization loop.""")
 tf.app.flags.DEFINE_integer('layer1_unit_num', 200,
@@ -26,7 +26,7 @@ tf.app.flags.DEFINE_float('learning_rate', 1e-3,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_float('gamma', 0.99,
                             """discount factor for reward.""")
-tf.app.flags.DEFINE_boolean('resume', False,
+tf.app.flags.DEFINE_boolean('resume', True,
                             """Whether to resume from previous checkpoint.""")
 tf.app.flags.DEFINE_boolean('render', False,
                             """Whether to display the game.""")
@@ -106,8 +106,8 @@ def compute_cost(Z2, Y, Rewards):
     with tf.name_scope("cost"):
         cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=Z2, labels=Y, name='cross_entropy')
         cost = tf.reduce_mean(tf.multiply(Rewards, cross_entropy, name="cross_reward"), name='cross_cost')
-        tf.summary.scalar('log_loss', cost)
-        return cost
+        loss_summary = tf.summary.scalar('log_loss', cost)
+        return cost, loss_summary
 
 
 # get an input image
@@ -149,7 +149,7 @@ def train():
         # Forward propagation
         Z2, A2 = forward_propagation(X)
         # Cost function: Add cost function to tensorflow graph
-        cost = compute_cost(Z2, Y, Reward)
+        cost, loss_summary = compute_cost(Z2, Y, Reward)
         # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
         optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, name='AdamOptimizer').minimize(cost)
 
@@ -159,7 +159,7 @@ def train():
 
     now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     root_logdir = FLAGS.train_dir
-    log_dir = "{}\\run-{}-log".format(root_logdir, now)
+    log_dir = "{}/run-{}-log".format(root_logdir, now)
     file_writer = tf.summary.FileWriter(log_dir, tf.get_default_graph())
     saver = tf.train.Saver()
 
@@ -167,7 +167,7 @@ def train():
     with tf.Session() as sess:
 
         if FLAGS.resume:
-            saver.restore(sess, tf.train.latest_checkpoint(root_logdir))
+            saver.restore(sess, FLAGS.restore_file_path)
         else:
             # Run the initialization
             sess.run(init)
@@ -200,6 +200,7 @@ def train():
             X_list.append(x_eval)
 
             if done:  # an episode finished
+            #if True:  # debug
                 episode_number += 1
                 # stack input and intermediate result
                 ep_R = np.vstack(R)
@@ -212,8 +213,8 @@ def train():
                 normal_ep_R = normalize_rewards(tf.cast(discounted_ep_R, tf.float32))
                 reward_eval = sess.run(normal_ep_R)
 
-                merged_summary = tf.summary.merge_all()
-                _, cost_eval, summary_str = sess.run([optimizer, cost, merged_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
+                # merged_summary = tf.summary.merge_all()   # get all summary in the graph, and put them in collection
+                _, cost_eval, summary_str = sess.run([optimizer, cost, loss_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
                 file_writer.add_summary(summary_str, global_step=episode_number)
 
                 R, X_list, Y_list = [], [], []
@@ -227,9 +228,10 @@ def train():
                 file_writer.add_summary(reward_mean_summary, global_step=episode_number)
                 # Save the model checkpoint periodically.
                 if episode_number % 100 == 0 or (episode_number + 1) == FLAGS.max_steps:
+                #if episode_number % 1 == 0 or (episode_number + 1) == FLAGS.max_steps:  # debug
                     now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-                    check_point_dir = "{}\\run-{}-checkpoint-{}-".format(root_logdir, now, FLAGS.checkpoint_file)
-                    checkpoint_path = os.path.join(check_point_dir, 'model.ckpt')
+                    check_point_dir = "{}/run-{}-checkpoint".format(root_logdir, now)
+                    checkpoint_path = os.path.join(check_point_dir, 'pg_pong_model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=episode_number)
 
                 reward_sum = 0

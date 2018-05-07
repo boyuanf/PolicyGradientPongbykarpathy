@@ -230,7 +230,7 @@ def train():
                 reward_mean_summary = tf.Summary(value=[tf.Summary.Value(tag="reward_mean", simple_value=running_reward)])
                 file_writer.add_summary(reward_mean_summary, global_step=episode_number)
                 # Save the model checkpoint periodically.
-                if episode_number % 100 == 0 or (episode_number + 1) == FLAGS.num_episode:
+                if episode_number % 10 == 0 or (episode_number + 1) == FLAGS.num_episode:
                 # if episode_number % 1 == 0 or (episode_number + 1) == FLAGS.num_episode:  # debug
                     now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
                     check_point_dir = "{}/run-{}-checkpoint".format(root_logdir, now)

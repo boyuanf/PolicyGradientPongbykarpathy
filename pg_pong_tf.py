@@ -12,7 +12,7 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('train_dir', 'tf_train_pong',
                            """Directory where to write event logs and checkpoint. """)
-tf.app.flags.DEFINE_string('restore_file_path', '/home/boyuanf/PolicyGradientPongbykarpathy/tf_train_pong/run-20180506221616-checkpoint/',
+tf.app.flags.DEFINE_string('restore_file_path', '/home/boyuanf/PolicyGradientPongbykarpathy/tf_train_pong/run-20180507010112-checkpoint/pg_pong_model.ckpt',
                            """Path of the restore file """)
 tf.app.flags.DEFINE_integer('num_episode', 10000,
                             """number of epochs of the optimization loop.""")
@@ -26,7 +26,7 @@ tf.app.flags.DEFINE_float('learning_rate', 1e-3,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_float('gamma', 0.99,
                             """discount factor for reward.""")
-tf.app.flags.DEFINE_boolean('resume', True,
+tf.app.flags.DEFINE_boolean('resume', False,
                             """Whether to resume from previous checkpoint.""")
 tf.app.flags.DEFINE_boolean('render', False,
                             """Whether to display the game.""")
@@ -213,8 +213,11 @@ def train():
                 normal_ep_R = normalize_rewards(tf.cast(discounted_ep_R, tf.float32))
                 reward_eval = sess.run(normal_ep_R)
 
-                # merged_summary = tf.summary.merge_all()   # get all summary in the graph, and put them in collection
-                _, cost_eval, summary_str = sess.run([optimizer, cost, loss_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
+                # add only loss_summary to summary
+                # _, cost_eval, summary_str = sess.run([optimizer, cost, loss_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
+                merged_summary = tf.summary.merge_all()  # get all summary in the graph, and put them in collection
+                _, cost_eval, summary_str = sess.run([optimizer, cost, merged_summary],
+                                                     feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
                 file_writer.add_summary(summary_str, global_step=episode_number)
 
                 R, X_list, Y_list = [], [], []
@@ -227,12 +230,12 @@ def train():
                 reward_mean_summary = tf.Summary(value=[tf.Summary.Value(tag="reward_mean", simple_value=running_reward)])
                 file_writer.add_summary(reward_mean_summary, global_step=episode_number)
                 # Save the model checkpoint periodically.
-                if episode_number % 100 == 0 or (episode_number + 1) == FLAGS.max_steps:
-                #if episode_number % 1 == 0 or (episode_number + 1) == FLAGS.max_steps:  # debug
+                if episode_number % 100 == 0 or (episode_number + 1) == FLAGS.num_episode:
+                # if episode_number % 1 == 0 or (episode_number + 1) == FLAGS.num_episode:  # debug
                     now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
                     check_point_dir = "{}/run-{}-checkpoint".format(root_logdir, now)
                     checkpoint_path = os.path.join(check_point_dir, 'pg_pong_model.ckpt')
-                    saver.save(sess, checkpoint_path, global_step=episode_number)
+                    saver.save(sess, checkpoint_path)
 
                 reward_sum = 0
                 observation = env.reset()  # reset env

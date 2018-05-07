@@ -26,7 +26,7 @@ tf.app.flags.DEFINE_float('learning_rate', 1e-3,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_float('gamma', 0.99,
                             """discount factor for reward.""")
-tf.app.flags.DEFINE_boolean('resume', True,
+tf.app.flags.DEFINE_boolean('resume', False,
                             """Whether to resume from previous checkpoint.""")
 tf.app.flags.DEFINE_boolean('render', False,
                             """Whether to display the game.""")

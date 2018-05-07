@@ -12,7 +12,7 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('train_dir', 'tf_train_pong',
                            """Directory where to write event logs and checkpoint. """)
-tf.app.flags.DEFINE_string('restore_file_path', '/home/boyuanf/PolicyGradientPongbykarpathy/tf_train_pong/run-20180507010112-checkpoint/pg_pong_model.ckpt',
+tf.app.flags.DEFINE_string('restore_file_path', '/home/ubuntu/PolicyGradientPongbykarpathy/tf_train_pong/run-20180507182051-checkpoint/pg_pong_model.ckpt',
                            """Path of the restore file """)
 tf.app.flags.DEFINE_integer('num_episode', 10000,
                             """number of epochs of the optimization loop.""")
@@ -26,7 +26,7 @@ tf.app.flags.DEFINE_float('learning_rate', 1e-3,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_float('gamma', 0.99,
                             """discount factor for reward.""")
-tf.app.flags.DEFINE_boolean('resume', False,
+tf.app.flags.DEFINE_boolean('resume', True,
                             """Whether to resume from previous checkpoint.""")
 tf.app.flags.DEFINE_boolean('render', False,
                             """Whether to display the game.""")
@@ -249,7 +249,7 @@ def train():
                 reward_mean_summary = tf.Summary(value=[tf.Summary.Value(tag="reward_mean", simple_value=running_reward)])
                 file_writer.add_summary(reward_mean_summary, global_step=episode_number)
                 # Save the model checkpoint periodically.
-                if episode_number % 5 == 0 or (episode_number + 1) == FLAGS.num_episode:
+                if episode_number % 100 == 0 or (episode_number + 1) == FLAGS.num_episode:
                 # if episode_number % 1 == 0 or (episode_number + 1) == FLAGS.num_episode:  # debug
                     now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
                     check_point_dir = "{}/run-{}-checkpoint".format(root_logdir, now)

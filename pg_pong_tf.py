@@ -131,6 +131,15 @@ def pre_processing(I, new_ep):
         return x, new_ep, prev_x_ops
 
 
+def prepro(I):
+    """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector """
+    I = I[35:195]  # crop
+    I = I[::2, ::2, 0]  # downsample by factor of 2, only take the first color channel
+    I[I == 144] = 0  # erase background (background type 1)
+    I[I == 109] = 0  # erase background (background type 2)
+    I[I != 0] = 1  # everything else (paddles, ball) just set to 1
+    return I.astype(np.float).ravel()  # flatten to 1D array
+
 def train():
     ops.reset_default_graph()  # to be able to rerun the model without overwriting tf variables
     tf.set_random_seed(1)  # to keep consistent results
@@ -142,8 +151,10 @@ def train():
     episode_number = 0
     R, X_list, Y_list = [], [], []
     new_ep = True
-    prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32,
-                             initializer=tf.zeros_initializer)  # used in computing the difference frame
+    #prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32,
+    #                         initializer=tf.zeros_initializer)  # used in computing the difference frame
+
+    prev_x = None
 
     with tf.name_scope("train"):
         # Forward propagation
@@ -180,10 +191,16 @@ def train():
                 time.sleep(0.01)
 
             # preprocess the observation, set input to network to be difference image
-            x, new_ep, prev_x_ops = pre_processing(observation, new_ep)
-            x_eval, _ = sess.run([x, prev_x_ops])
+            # x, new_ep, prev_x_ops = pre_processing(observation, new_ep)
+            # x_eval, _ = sess.run([x, prev_x_ops])
+            # A2_eval = sess.run([A2], feed_dict={X: x_eval})
 
-            A2_eval = sess.run([A2], feed_dict={X: x_eval})
+            cur_x = prepro(observation)
+            x = cur_x - prev_x if prev_x is not None else np.zeros(input_size)
+            prev_x = cur_x
+            x = x.reshape((1, x.shape[0]))
+            A2_eval = sess.run([A2], feed_dict={X: x})
+
 
             if np.random.uniform() < A2_eval[0][0][0]:
                 action = 2
@@ -197,7 +214,9 @@ def train():
             reward_sum += reward
             R.append(reward)  # record reward (has to be done after we call step() to get reward for previous action)
             Y_list.append(y)
-            X_list.append(x_eval)
+            # X_list.append(x_eval)
+            X_list.append(x)
+
 
             if done:  # an episode finished
             #if True:  # debug
@@ -230,7 +249,7 @@ def train():
                 reward_mean_summary = tf.Summary(value=[tf.Summary.Value(tag="reward_mean", simple_value=running_reward)])
                 file_writer.add_summary(reward_mean_summary, global_step=episode_number)
                 # Save the model checkpoint periodically.
-                if episode_number % 10 == 0 or (episode_number + 1) == FLAGS.num_episode:
+                if episode_number % 5 == 0 or (episode_number + 1) == FLAGS.num_episode:
                 # if episode_number % 1 == 0 or (episode_number + 1) == FLAGS.num_episode:  # debug
                     now = datetime.utcnow().strftime("%Y%m%d%H%M%S")
                     check_point_dir = "{}/run-{}-checkpoint".format(root_logdir, now)
@@ -240,6 +259,8 @@ def train():
                 reward_sum = 0
                 observation = env.reset()  # reset env
                 new_ep = True
+                prev_x = None
+
 
             if reward != 0:  # Pong has either +1 or -1 reward exactly when game ends.
                 print(('ep %d: game finished, reward: %f' % (episode_number, reward)) + ('' if reward == -1 else ' !!!!!!!!'))

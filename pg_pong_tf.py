@@ -20,7 +20,7 @@ tf.app.flags.DEFINE_integer('layer1_unit_num', 200,
                             """Number of the hidden unit in layer1.""")
 tf.app.flags.DEFINE_float('regularizer_scale', 0.01,
                             """L1 regularizer scale.""")
-tf.app.flags.DEFINE_integer('batch_size', 10,
+tf.app.flags.DEFINE_integer('batch_size', 8,
                             """every how many episodes to do a param update.""")
 tf.app.flags.DEFINE_float('learning_rate', 1e-3,
                             """Number of batches to run.""")
@@ -73,7 +73,7 @@ def discount_rewards(r):
     """ Explained in 'More general advantage functions' section """
     discounted_r = np.zeros_like(r)
     running_add = 0
-    for t in reversed(range(0, r.size)):
+    for t in reversed(range(0, len(r))):
         if r[t] != 0:
             running_add = 0  # reset the sum, since this was a game boundary (pong specific!)
         running_add = running_add * FLAGS.gamma + r[t]
@@ -110,6 +110,7 @@ def compute_cost(Z2, Y, Rewards):
         return cost, loss_summary
 
 
+# This function is a bad example, by calling this function, new code will be created, which should not in the while loop
 # get an input image
 def pre_processing(I, new_ep):
     """ prepro 210x160x3 uint8 frame into 6400 (80x80) 1D float vector """
@@ -149,8 +150,7 @@ def train():
     running_reward = None
     reward_sum = 0
     episode_number = 0
-    R, X_list, Y_list = [], [], []
-    new_ep = True
+    R_list, X_list, Y_list, R_batch = [], [], [], []
     #prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32,
     #                         initializer=tf.zeros_initializer)  # used in computing the difference frame
 
@@ -205,7 +205,6 @@ def train():
             x = x.reshape((1, x.shape[0]))
             A2_eval = sess.run([A2], feed_dict={X: x})
 
-
             if np.random.uniform() < A2_eval[0][0][0]:
                 action = 2
                 y = 1
@@ -216,41 +215,42 @@ def train():
             # step the environment and get new measurements
             observation, reward, done, info = env.step(action)
             reward_sum += reward
-            R.append(reward)  # record reward (has to be done after we call step() to get reward for previous action)
+            R_list.append(reward)  # record reward (has to be done after we call step() to get reward for previous action)
             Y_list.append(y)
             # X_list.append(x_eval)
             X_list.append(x)
 
-
             if done:  # an episode finished
             #if True:  # debug
                 episode_number += 1
-                # stack input and intermediate result
-                ep_R = np.vstack(R)
-                ep_Y = np.vstack(Y_list)
-                ep_X = np.vstack(X_list)
-
                 # compute the discounted reward backwards through time
-                discounted_ep_R = discount_rewards(ep_R)
+                discounted_ep_R = discount_rewards(R_list)
                 # better not create graph in while loop, otherwise the model is keep growing!
-                #normal_ep_R = normalize_rewards(tf.cast(discounted_ep_R, tf.float32))
-                #reward_eval = sess.run(normal_ep_R)
+                # normal_ep_R = normalize_rewards(tf.cast(discounted_ep_R, tf.float32))
+                # reward_eval = sess.run(normal_ep_R)
                 # standardize the rewards to be unit normal (helps control the gradient estimator variance)
                 discounted_ep_R -= np.mean(discounted_ep_R)
                 discounted_ep_R /= np.std(discounted_ep_R)
+                R_batch = np.concatenate((R_batch, discounted_ep_R), axis=0)
+                R_list = []
 
-                # add only loss_summary to summary
-                # _, cost_eval, summary_str = sess.run([optimizer, cost, loss_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
-                _, cost_eval, summary_str = sess.run([optimizer, cost, merged_summary],
-                                                     feed_dict={X: ep_X, Y: ep_Y, Reward: discounted_ep_R})
-                file_writer.add_summary(summary_str, global_step=episode_number)
+                if episode_number % FLAGS.batch_size == 0:
+                    # stack input and intermediate result
+                    R_batch = R_batch.reshape(R_batch.shape[0], 1)
+                    ep_Y = np.vstack(Y_list)
+                    ep_X = np.vstack(X_list)
 
-                R, X_list, Y_list = [], [], []
+                    # add only loss_summary to summary
+                    # _, cost_eval, summary_str = sess.run([optimizer, cost, loss_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: ep_R})
+                    _, cost_eval, summary_str = sess.run([optimizer, cost, merged_summary],
+                                                         feed_dict={X: ep_X, Y: ep_Y, Reward: R_batch})
+                    file_writer.add_summary(summary_str, global_step=episode_number)
+                    print('cost is: ', cost_eval)
+                    R_batch, X_list, Y_list = [], [], []
 
                 # boring book-keeping
                 running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
                 print('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
-                print('cost is: ', cost_eval)
                 # Add user data to TensorBoard
                 reward_mean_summary = tf.Summary(value=[tf.Summary.Value(tag="reward_mean", simple_value=running_reward)])
                 file_writer.add_summary(reward_mean_summary, global_step=episode_number)
@@ -264,17 +264,17 @@ def train():
 
                 reward_sum = 0
                 observation = env.reset()  # reset env
-                new_ep = True
                 prev_x = None
-
 
             if reward != 0:  # Pong has either +1 or -1 reward exactly when game ends.
                 print(('ep %d: game finished, reward: %f' % (episode_number, reward)) + ('' if reward == -1 else ' !!!!!!!!'))
 
     file_writer.close()
 
+
 def main(argv=None):
     train()
+
 
 if __name__ == '__main__':
     tf.app.run()

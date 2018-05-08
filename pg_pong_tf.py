@@ -173,6 +173,10 @@ def train():
     log_dir = "{}/run-{}-log".format(root_logdir, now)
     file_writer = tf.summary.FileWriter(log_dir, tf.get_default_graph())
     saver = tf.train.Saver()
+    merged_summary = tf.summary.merge_all()  # get all summary in the graph, and put them in collection
+
+    # finalize the graph to avoid accidentally change
+    tf.get_default_graph().finalize()
 
     # Start the session to compute the tensorflow graph
     with tf.Session() as sess:
@@ -237,7 +241,6 @@ def train():
 
                 # add only loss_summary to summary
                 # _, cost_eval, summary_str = sess.run([optimizer, cost, loss_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
-                merged_summary = tf.summary.merge_all()  # get all summary in the graph, and put them in collection
                 _, cost_eval, summary_str = sess.run([optimizer, cost, merged_summary],
                                                      feed_dict={X: ep_X, Y: ep_Y, Reward: discounted_ep_R})
                 file_writer.add_summary(summary_str, global_step=episode_number)

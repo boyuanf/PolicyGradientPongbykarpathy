@@ -228,15 +228,18 @@ def train():
 
                 # compute the discounted reward backwards through time
                 discounted_ep_R = discount_rewards(ep_R)
+                # better not create graph in while loop, otherwise the model is keep growing!
+                #normal_ep_R = normalize_rewards(tf.cast(discounted_ep_R, tf.float32))
+                #reward_eval = sess.run(normal_ep_R)
                 # standardize the rewards to be unit normal (helps control the gradient estimator variance)
-                normal_ep_R = normalize_rewards(tf.cast(discounted_ep_R, tf.float32))
-                reward_eval = sess.run(normal_ep_R)
+                discounted_ep_R -= np.mean(discounted_ep_R)
+                discounted_ep_R /= np.std(discounted_ep_R)
 
                 # add only loss_summary to summary
                 # _, cost_eval, summary_str = sess.run([optimizer, cost, loss_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
                 merged_summary = tf.summary.merge_all()  # get all summary in the graph, and put them in collection
                 _, cost_eval, summary_str = sess.run([optimizer, cost, merged_summary],
-                                                     feed_dict={X: ep_X, Y: ep_Y, Reward: reward_eval})
+                                                     feed_dict={X: ep_X, Y: ep_Y, Reward: discounted_ep_R})
                 file_writer.add_summary(summary_str, global_step=episode_number)
 
                 R, X_list, Y_list = [], [], []

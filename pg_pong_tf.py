@@ -172,7 +172,7 @@ def train():
     root_logdir = FLAGS.train_dir
     log_dir = "{}/run-{}-log".format(root_logdir, now)
     file_writer = tf.summary.FileWriter(log_dir, tf.get_default_graph())
-    saver = tf.train.Saver()
+    saver = tf.train.Saver()  # will only keep the latest 5 models
     merged_summary = tf.summary.merge_all()  # get all summary in the graph, and put them in collection
 
     # finalize the graph to avoid accidentally change

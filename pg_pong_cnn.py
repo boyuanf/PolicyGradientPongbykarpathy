@@ -74,12 +74,12 @@ def cnn_model_fn(features):
         l1_regularizer = tf.contrib.layers.l1_regularizer(FLAGS.regularizer_scale)
 
         # Input Layer
-        input_layer = tf.reshape(features["x"], [-1, 80, 80, 1])
+        input_layer = tf.reshape(features, [-1, 80, 80, 1])
 
         # Convolutional Layer #1
         conv1 = tf.layers.conv2d(
             inputs=input_layer,
-            filters=32,
+            filters=6,
             kernel_size=[5, 5],
             padding="same",
             activation=tf.nn.relu,

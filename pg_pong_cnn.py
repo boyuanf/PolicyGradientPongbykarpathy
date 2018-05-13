@@ -20,7 +20,7 @@ tf.app.flags.DEFINE_integer('layer1_unit_num', 200,
                             """Number of the hidden unit in layer1.""")
 tf.app.flags.DEFINE_float('regularizer_scale', 0.01,
                             """L1 regularizer scale.""")
-tf.app.flags.DEFINE_integer('batch_size', 8,
+tf.app.flags.DEFINE_integer('batch_size', 1,  # if the batch_size larger than 1, the cnn tensor may not fit the GPU memory
                             """every how many episodes to do a param update.""")
 tf.app.flags.DEFINE_float('learning_rate', 1e-3,
                             """Number of batches to run.""")

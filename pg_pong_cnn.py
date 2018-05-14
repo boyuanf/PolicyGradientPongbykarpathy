@@ -183,8 +183,13 @@ def train():
     R_list, X_list, Y_list, R_batch = [], [], [], []
     #prev_x = tf.get_variable("prev_x", [1, input_size], dtype=tf.float32,
     #                         initializer=tf.zeros_initializer)  # used in computing the difference frame
-
     prev_x = None
+
+    # decay learning rate
+    global_step = tf.Variable(0, trainable=False)
+    starter_learning_rate = FLAGS.learning_rate
+    learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
+                                               decay_steps=60, decay_rate=0.96, staircase=True, name='learning_rate')
 
     with tf.name_scope("train"):
         # Forward propagation
@@ -193,7 +198,8 @@ def train():
         # Cost function: Add cost function to tensorflow graph
         cost, loss_summary = compute_cost(Z2, Y, Reward)
         # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
-        optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, name='AdamOptimizer').minimize(cost)
+        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='AdamOptimizer')\
+            .minimize(cost, global_step=global_step)
 
     # Initialize all the variables
     with tf.name_scope("init"):
@@ -292,6 +298,10 @@ def train():
                     check_point_dir = "{}/run-{}-checkpoint".format(root_logdir, now)
                     checkpoint_path = os.path.join(check_point_dir, 'pg_pong_model.ckpt')
                     saver.save(sess, checkpoint_path)
+
+                # debug learning_rate
+                print("the global step is: ", sess.run(global_step))
+                print("the learning rate is: ", sess.run(learning_rate))
 
                 reward_sum = 0
                 observation = env.reset()  # reset env

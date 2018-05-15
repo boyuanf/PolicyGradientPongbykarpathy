@@ -85,8 +85,7 @@ def cnn_model_fn(features, train_mode):
         conv1 = tf.layers.conv2d(
             inputs=input_layer,
             filters=6,
-            kernel_size=[8, 8],
-            strides=(4, 4),
+            kernel_size=[5, 5],
             padding="same",
             activation=tf.nn.relu,
             kernel_initializer=he_init,
@@ -97,8 +96,8 @@ def cnn_model_fn(features, train_mode):
         pool1 = tf.layers.average_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2, name='pool1')
 
         # Dense Layer #1
-        pool1_flat = tf.reshape(pool1, [-1, 10 * 10 * 6])
-        dense1 = tf.layers.dense(inputs=pool1_flat, units=512, activation=tf.nn.relu, kernel_initializer=he_init,
+        pool1_flat = tf.reshape(pool1, [-1, 40 * 40 * 6])
+        dense1 = tf.layers.dense(inputs=pool1_flat, units=1024, activation=tf.nn.relu, kernel_initializer=he_init,
                                  kernel_regularizer=l1_regularizer, name='dense1')
         dropout = tf.layers.dropout(inputs=dense1, rate=0.5, training=train_mode)
 

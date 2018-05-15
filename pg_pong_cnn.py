@@ -206,13 +206,14 @@ def train():
     with tf.name_scope("train"):
         # Use accumulated data to train NN
         # Forward propagation
-        Z2, A2 = cnn_model_fn(X, True)
-        # Z2, A2 = forward_propagation(X)
-        # Cost function: Add cost function to tensorflow graph
-        cost, loss_summary = compute_cost(Z2, Y, Reward)
-        # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
-        optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='AdamOptimizer')\
-            .minimize(cost, global_step=global_step)
+        with tf.variable_scope(tf.get_variable_scope(), reuse=tf.AUTO_REUSE):
+            Z2, A2 = cnn_model_fn(X, True)
+            # Z2, A2 = forward_propagation(X)
+            # Cost function: Add cost function to tensorflow graph
+            cost, loss_summary = compute_cost(Z2, Y, Reward)
+            # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
+            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate, name='AdamOptimizer')\
+                .minimize(cost, global_step=global_step)
 
     # Initialize all the variables
     with tf.name_scope("init"):

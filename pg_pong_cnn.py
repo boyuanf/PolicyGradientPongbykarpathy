@@ -39,8 +39,6 @@ observation_size = 210 * 160 * 3  # observation dimensionality: 210x160x3
 # add dropout for dense1
 # change maxpooling to avgpooling
 
-
-
 def create_placeholders(input_size):
     """
         Creates the placeholders for the tensorflow session.
@@ -277,7 +275,7 @@ def train():
                     # _, cost_eval, summary_str = sess.run([optimizer, cost, loss_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: ep_R})
                     _, cost_eval, summary_str = sess.run([optimizer, cost, merged_summary],
                                                          feed_dict={X: ep_X, Y: ep_Y, Reward: R_batch})
-                    file_writer.add_summary(summary_str, global_step=episode_number)
+                    file_writer.add_summary(summary_str, global_step=global_step)
                     print('cost is: ', cost_eval)
                     R_batch, X_list, Y_list = [], [], []
 
@@ -286,7 +284,7 @@ def train():
                 print('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
                 # Add user data to TensorBoard
                 reward_mean_summary = tf.Summary(value=[tf.Summary.Value(tag="reward_mean", simple_value=running_reward)])
-                file_writer.add_summary(reward_mean_summary, global_step=episode_number)
+                file_writer.add_summary(reward_mean_summary, global_step=global_step)
                 # Save the model checkpoint periodically.
                 if episode_number % 100 == 0 or (episode_number + 1) == FLAGS.num_episode:
                 # if episode_number % 1 == 0 or (episode_number + 1) == FLAGS.num_episode:  # debug

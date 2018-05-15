@@ -53,24 +53,6 @@ def create_placeholders(input_size):
     R = tf.placeholder(tf.float32, shape=(None, 1), name="Z2")
     return X, Y, R
 
-def forward_propagation(X):
-    """
-        Implements the forward propagation for the model
-        Arguments:
-        X -- input dataset placeholder, of shape (number of examples, input size)
-        Returns:
-        Z2 -- the output of the last LINEAR unit
-    """
-    with tf.name_scope("forward_propagation"):
-        he_init = tf.contrib.layers.variance_scaling_initializer()
-        l1_regularizer = tf.contrib.layers.l1_regularizer(FLAGS.regularizer_scale)
-        Z1 = tf.layers.dense(inputs=X, units=FLAGS.layer1_unit_num, kernel_initializer=he_init,
-                            kernel_regularizer=l1_regularizer, name="Z1")
-        A1 = tf.nn.relu(Z1, name='A1')
-        Z2 = tf.layers.dense(inputs=A1, units=1, kernel_initializer=he_init, name="Z2")
-        A2 = tf.nn.sigmoid(Z2, name='A2')
-        return Z2, A2
-
 def cnn_model_fn(features, train_mode):
     """Model function for CNN."""
     with tf.name_scope("cnn_forward_propagation"):

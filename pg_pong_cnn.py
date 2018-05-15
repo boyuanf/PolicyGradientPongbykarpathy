@@ -274,9 +274,9 @@ def train():
 
                     # add only loss_summary to summary
                     # _, cost_eval, summary_str = sess.run([optimizer, cost, loss_summary], feed_dict={X: ep_X, Y: ep_Y, Reward: ep_R})
-                    _, cost_eval, summary_str = sess.run([optimizer, cost, merged_summary],
+                    _, cost_eval, summary_str, global_step_eval = sess.run([optimizer, cost, merged_summary, global_step],
                                                          feed_dict={X: ep_X, Y: ep_Y, Reward: R_batch})
-                    file_writer.add_summary(summary_str, global_step=global_step)
+                    file_writer.add_summary(summary_str, global_step=global_step_eval)
                     print('cost is: ', cost_eval)
                     R_batch, X_list, Y_list = [], [], []
 
@@ -285,7 +285,7 @@ def train():
                 print('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
                 # Add user data to TensorBoard
                 reward_mean_summary = tf.Summary(value=[tf.Summary.Value(tag="reward_mean", simple_value=running_reward)])
-                file_writer.add_summary(reward_mean_summary, global_step=global_step)
+                file_writer.add_summary(reward_mean_summary, global_step=global_step_eval)
                 # Save the model checkpoint periodically.
                 if episode_number % 100 == 0 or (episode_number + 1) == FLAGS.num_episode:
                 # if episode_number % 1 == 0 or (episode_number + 1) == FLAGS.num_episode:  # debug
@@ -295,7 +295,6 @@ def train():
                     saver.save(sess, checkpoint_path)
 
                 # debug learning_rate
-                print("the global step is: ", sess.run(global_step))
                 print("the learning rate is: ", sess.run(learning_rate))
 
                 reward_sum = 0

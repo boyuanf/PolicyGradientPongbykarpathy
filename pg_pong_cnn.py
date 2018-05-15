@@ -18,7 +18,7 @@ tf.app.flags.DEFINE_integer('num_episode', 10000,
                             """number of epochs of the optimization loop.""")
 tf.app.flags.DEFINE_integer('layer1_unit_num', 200,
                             """Number of the hidden unit in layer1.""")
-tf.app.flags.DEFINE_float('regularizer_scale', 0.01,
+tf.app.flags.DEFINE_float('regularizer_scale', 0.1,
                             """L1 regularizer scale.""")
 tf.app.flags.DEFINE_integer('batch_size', 1,  # if the batch_size larger than 1, the cnn tensor may not fit the GPU memory
                             """every how many episodes to do a param update.""")
@@ -34,8 +34,12 @@ tf.app.flags.DEFINE_boolean('render', False,
 input_size = 80 * 80  # input dimensionality: 80x80 grid
 observation_size = 210 * 160 * 3  # observation dimensionality: 210x160x3
 
-# TO start the tensorboard: tensorboard: 1.5.1, tensorflow: 1.5.0
-# python -m tensorboard.main --logdir=C:\Boyuan\MyPython\MNIST_Dataset
+
+# add l2 regular to conv1
+# add dropout for dense1
+# change maxpooling to avgpooling
+
+
 
 def create_placeholders(input_size):
     """
@@ -67,11 +71,12 @@ def forward_propagation(X):
         A2 = tf.nn.sigmoid(Z2, name='A2')
         return Z2, A2
 
-def cnn_model_fn(features):
+def cnn_model_fn(features, train_mode):
     """Model function for CNN."""
     with tf.name_scope("cnn_forward_propagation"):
         he_init = tf.contrib.layers.variance_scaling_initializer()
         l1_regularizer = tf.contrib.layers.l1_regularizer(FLAGS.regularizer_scale)
+        l2_regularizer = tf.contrib.layers.l2_regularizer(FLAGS.regularizer_scale)
 
         # Input Layer
         input_layer = tf.reshape(features, [-1, 80, 80, 1])
@@ -83,18 +88,21 @@ def cnn_model_fn(features):
             kernel_size=[5, 5],
             padding="same",
             activation=tf.nn.relu,
+            kernel_initializer=he_init,
+            kernel_regularizer=l2_regularizer,
             name='conv1')
 
         # Pooling Layer #1
-        pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2, name='pool1')
+        pool1 = tf.layers.average_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2, name='pool1')
 
         # Dense Layer #1
         pool1_flat = tf.reshape(pool1, [-1, 40 * 40 * 6])
         dense1 = tf.layers.dense(inputs=pool1_flat, units=1024, activation=tf.nn.relu, kernel_initializer=he_init,
                                  kernel_regularizer=l1_regularizer, name='dense1')
+        dropout = tf.layers.dropout(inputs=dense1, rate=0.5, training=train_mode)
 
         # Dense Layer #2
-        Z2 = tf.layers.dense(inputs=dense1, units=1, kernel_initializer=he_init, name="Z2")
+        Z2 = tf.layers.dense(inputs=dropout, units=1, kernel_initializer=he_init, name="Z2")
         A2 = tf.nn.sigmoid(Z2, name='A2')
         return Z2, A2
 
@@ -191,9 +199,14 @@ def train():
     learning_rate = tf.train.exponential_decay(starter_learning_rate, global_step,
                                                decay_steps=60, decay_rate=0.96, staircase=True, name='learning_rate')
 
+    with tf.name_scope("predict"):
+        # Predict using current NN, save the result as training data
+        Z2_predict, A2_predict = cnn_model_fn(X, False)
+
     with tf.name_scope("train"):
+        # Use accumulated data to train NN
         # Forward propagation
-        Z2, A2 = cnn_model_fn(X)
+        Z2, A2 = cnn_model_fn(X, True)
         # Z2, A2 = forward_propagation(X)
         # Cost function: Add cost function to tensorflow graph
         cost, loss_summary = compute_cost(Z2, Y, Reward)
@@ -240,7 +253,7 @@ def train():
             x = cur_x - prev_x if prev_x is not None else np.zeros(input_size)
             prev_x = cur_x
             x = x.reshape((1, x.shape[0]))
-            A2_eval = sess.run([A2], feed_dict={X: x})
+            A2_eval = sess.run([A2_predict], feed_dict={X: x})
 
             if np.random.uniform() < A2_eval[0][0][0]:
                 action = 2

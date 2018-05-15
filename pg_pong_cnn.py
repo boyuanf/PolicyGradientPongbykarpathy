@@ -123,7 +123,8 @@ def compute_cost(Z2, Y, Rewards):
     # to fit the tensorflow requirement for tf.nn.sigmoid_cross_entropy_with_logits(...,...)
     with tf.name_scope("cost"):
         cross_entropy = tf.nn.sigmoid_cross_entropy_with_logits(logits=Z2, labels=Y, name='cross_entropy')
-        cost = tf.reduce_mean(tf.multiply(Rewards, cross_entropy, name="cross_reward"), name='cross_cost')
+        #cost = tf.reduce_mean(tf.multiply(Rewards, cross_entropy, name="cross_reward"), name='cross_cost')
+        cost = tf.reduce_sum(tf.multiply(Rewards, cross_entropy, name="cross_reward"), name='cross_cost')
         loss_summary = tf.summary.scalar('log_loss', cost)
         return cost, loss_summary
 
